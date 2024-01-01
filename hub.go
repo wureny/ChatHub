@@ -31,8 +31,6 @@ type Hub struct {
 	clientsMutex sync.Mutex
 }
 
-const CAPOFBUFFER = 100
-
 func newHub(bufferofbroadcast int64, maxconnections int64) *Hub {
 	return &Hub{
 		clientMutex: sync.Mutex{},
