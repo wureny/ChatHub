@@ -12,9 +12,7 @@ type clientinfo struct {
 	lastmesgsent time.Time
 }
 
-// TODO：将buffer去掉，将broadcast修改为带有缓冲的channel
 type Hub struct {
-	//TODO：加锁究竟有没有必要
 	clientMutex sync.Mutex
 	clients     map[*Client]bool
 	// 广播消息缓冲区大小为256
@@ -66,25 +64,6 @@ func (h *Hub) run() {
 			time.Sleep(pongWait)
 		}
 	}()
-	//检查buffer是否大于CAPOFBUFFER，满了就批量发送消息给clients
-	/*	go func() {
-			for {
-				if len(h.buffer) >= CAPOFBUFFER {
-					//将h中的内容mashal为[]byte，批量发送给clients
-					for client := range h.clients {
-						for _, v := range h.buffer {
-							msg, err := v.MarshalMsg([]byte{})
-							if err != nil {
-								break
-							}
-							client.send <- msg
-						}
-					}
-				}
-				//time.Sleep(3 * time.Second)
-			}
-		}()
-	*/
 	//检查每个用户的lastmsgsent是否在15分钟之内，否则断开连接
 	go func() {
 		for {
@@ -105,16 +84,8 @@ func (h *Hub) run() {
 	}()
 	//每隔两秒钟将buffer中的消息发送给所有的clients
 	//此处还未清空buffer
-	//TODO：此处不会和上面清空buffer的代码有冲突吗，即有没有可能一个消息被发送两次
 	go func() {
 		for client := range h.clients {
-			/*for _, v := range h.buffer {
-				msg, err := v.MarshalMsg([]byte{})
-				if err != nil {
-					break
-				}
-				client.send <- msg
-			}*/
 			go func() {
 				for {
 					select {
@@ -132,10 +103,8 @@ func (h *Hub) run() {
 			}()
 		}
 	}()
-	//heartbeatTicker := time.NewTicker(15 * time.Second)
 	for {
 		select {
-		//TODO：处理最大连接数
 		case client := <-h.register:
 			if h.clients[client] == true {
 				break
@@ -153,17 +122,6 @@ func (h *Hub) run() {
 				}
 				close(client.send)
 			}
-		//定时器定时触发websocket ping/pong检测
-		/*case <-heartbeatTicker.C:
-		for client := range h.clients {
-			select {
-			case client.send <- []byte("ping"):
-			default:
-				close(client.send)
-				delete(h.clients, client)
-			}
-		}*/
-		//TODO：数据格式问题
 		case message := <-h.broadcast:
 			msg := Msg{addr: "", time: time.Now().String(), content: string(message)}
 			_, err := (&msg).UnmarshalMsg(message)
@@ -178,7 +136,6 @@ func (h *Hub) run() {
 					}
 				}
 			}()
-			//TODO：限流
 			e := limiter.Wait(ctx)
 			if e != nil {
 				time.Sleep(1 * time.Second)
@@ -186,17 +143,6 @@ func (h *Hub) run() {
 			if e != nil {
 				break
 			}
-			/*
-				//检查buffer是否已满，没满便加入buffer缓存
-				if len(h.buffer)+1 <= CAPOFBUFFER {
-					h.buffer = append(h.buffer, msg)
-				} else {
-					time.Sleep(3 * time.Second)
-				}
-				if len(h.buffer)+1 <= CAPOFBUFFER {
-					h.buffer = append(h.buffer, msg)
-				}
-			*/
 			h.buffer <- msg
 		}
 	}
