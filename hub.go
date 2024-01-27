@@ -80,8 +80,11 @@ func (h *Hub) run() {
 	//每隔两秒钟将buffer中的消息发送给所有的clients
 	//此处还未清空buffer
 	go func() {
+		var wg sync.WaitGroup
 		for client := range h.clients {
+			wg.Add(1)
 			go func() {
+				defer wg.Done()
 				for {
 					select {
 					case msg := <-h.buffer:
@@ -91,13 +94,14 @@ func (h *Hub) run() {
 						}
 						client.send <- m
 					default:
-						break
+						continue
 					}
 				}
-				//time.Sleep(2 * time.Second)
 			}()
 		}
+		wg.Wait()
 	}()
+
 	for {
 		select {
 		case client := <-h.register:
