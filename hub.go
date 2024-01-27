@@ -31,19 +31,12 @@ type Hub struct {
 
 func newHub(bufferofbroadcast int64, maxconnections int64) *Hub {
 	return &Hub{
-		clientMutex: sync.Mutex{},
-		clients:     make(map[*Client]bool),
-
-		broadcast: make(chan []byte),
-
-		bufferMutex: sync.Mutex{},
-		buffer:      make(chan Msg, bufferofbroadcast),
-
+		clients:    make(map[*Client]bool),
+		broadcast:  make(chan []byte),
+		buffer:     make(chan Msg, bufferofbroadcast),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
-
-		clientsMutex: sync.Mutex{},
-		allclients:   make([]clientinfo, 0, maxconnections),
+		allclients: make([]clientinfo, 0, maxconnections),
 	}
 }
 
@@ -51,12 +44,14 @@ func (h *Hub) run() {
 	limiter := rate.NewLimiter(350, 350*3)
 	ctx := context.Background()
 	h.clientsMutex.Lock()
-	defer h.clientsMutex.Unlock()
-	h.bufferMutex.Lock()
-	defer h.bufferMutex.Unlock()
-	h.clientMutex.Lock()
-	defer h.clientMutex.Unlock()
-
+	//TODO:锁的增加有问题
+	/*
+		defer h.clientsMutex.Unlock()
+		h.bufferMutex.Lock()
+		defer h.bufferMutex.Unlock()
+		h.clientMutex.Lock()
+		defer h.clientMutex.Unlock()
+	*/
 	//轮询检查不活跃的连接
 	go func() {
 		for {

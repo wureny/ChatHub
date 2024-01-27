@@ -67,7 +67,6 @@ func (c *Client) readPump() {
 			break
 		}
 		//新建一个Msg对象，addr为发送者地址，time为发送时间，content为message,另外将time这个time.Time类型转换为string类型
-		//TODO:对消息的大小进行限制
 		msg := Msg{addr: c.conn.RemoteAddr().String(), time: time.Now().String(), content: string(message)}
 		s, err := msg.MarshalMsg([]byte{})
 		c.hub.broadcast <- s
