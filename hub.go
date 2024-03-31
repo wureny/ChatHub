@@ -66,13 +66,7 @@ func (h *Hub) run() {
 		for {
 			for i, v := range h.allclients {
 				if time.Now().Sub(v.Lastmesgsent) > 15*time.Minute {
-					for client := range h.clients {
-						if client.conn.RemoteAddr().String() == i {
-							close(client.send)
-							delete(h.clients, client)
-							break
-						}
-					}
+					delete(h.clients, h.allclients[i].Client)
 					delete(h.allclients, i)
 				}
 			}
