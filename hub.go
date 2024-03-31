@@ -18,12 +18,9 @@ type Hub struct {
 	// 广播消息缓冲区大小为256
 	//另外设置定时器，每隔一段时间清空缓冲区
 	//或者超出时清空缓冲区
-	broadcast chan []byte
-
-	bufferMutex sync.Mutex
-	buffer      chan Msg
-	register    chan *Client
-	unregister  chan *Client
+	broadcast  chan []byte
+	register   chan *Client
+	unregister chan *Client
 	//TODO: 该数据结构并不高效
 	//TODO: 使用sync.map改造
 	allclients   map[string]clientinfo
@@ -34,7 +31,6 @@ func newHub(bufferofbroadcast int64, maxconnections int64) *Hub {
 	return &Hub{
 		clients:    make(map[*Client]bool),
 		broadcast:  make(chan []byte),
-		buffer:     make(chan Msg, bufferofbroadcast),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 		allclients: make(map[string]clientinfo, maxconnections),
@@ -75,7 +71,7 @@ func (h *Hub) run() {
 	}()
 	//每隔两秒钟将buffer中的消息发送给所有的clients
 	//此处还未清空buffer
-	go func() {
+	/*go func() {
 		var wg sync.WaitGroup
 		for client := range h.clients {
 			wg.Add(1)
@@ -97,6 +93,7 @@ func (h *Hub) run() {
 		}
 		wg.Wait()
 	}()
+	*/
 	//处理客户端传来的各种请求
 	for {
 		select {
@@ -142,7 +139,7 @@ func (h *Hub) run() {
 			if e != nil {
 				break
 			}
-			h.buffer <- msg
+
 		}
 	}
 }
