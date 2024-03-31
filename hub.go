@@ -8,8 +8,8 @@ import (
 )
 
 type clientinfo struct {
-	addr         string
-	lastmesgsent time.Time
+	Client       *Client
+	Lastmesgsent time.Time
 }
 
 type Hub struct {
@@ -26,7 +26,7 @@ type Hub struct {
 	unregister  chan *Client
 	//TODO: 该数据结构并不高效
 	//TODO: 使用sync.map改造
-	allclients   map[string]time.Time
+	allclients   map[string]clientinfo
 	clientsMutex sync.Mutex
 }
 
@@ -37,7 +37,7 @@ func newHub(bufferofbroadcast int64, maxconnections int64) *Hub {
 		buffer:     make(chan Msg, bufferofbroadcast),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
-		allclients: make(map[string]time.Time, maxconnections),
+		allclients: make(map[string]clientinfo, maxconnections),
 	}
 }
 
@@ -60,11 +60,12 @@ func (h *Hub) run() {
 			time.Sleep(pongWait)
 		}
 	}()
+
 	//检查每个用户的lastmsgsent是否在15分钟之内，否则断开连接
 	go func() {
 		for {
 			for i, v := range h.allclients {
-				if time.Now().Sub(v) > 15*time.Minute {
+				if time.Now().Sub(v.Lastmesgsent) > 15*time.Minute {
 					for client := range h.clients {
 						if client.conn.RemoteAddr().String() == i {
 							close(client.send)
@@ -110,7 +111,18 @@ func (h *Hub) run() {
 				break
 			}
 			h.clients[client] = true
-			h.allclients[client.conn.RemoteAddr().String()] = time.Now()
+			addr := client.conn.RemoteAddr().String()
+			info, ok := h.allclients[addr]
+			if !ok {
+				info = clientinfo{
+					Client:       client,
+					Lastmesgsent: time.Now(),
+				}
+				h.allclients[addr] = info
+			} else {
+				info.Lastmesgsent = time.Now()
+				h.allclients[addr] = info
+			}
 		case client := <-h.unregister:
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
@@ -123,7 +135,12 @@ func (h *Hub) run() {
 			if err != nil {
 				break
 			}
-			h.allclients[msg.addr] = time.Now()
+			addr := msg.addr
+			info, ok := h.allclients[addr]
+			if ok {
+				info.Lastmesgsent = time.Now()
+				h.allclients[addr] = info
+			}
 			e := limiter.Wait(ctx)
 			if e != nil {
 				time.Sleep(1 * time.Second)
