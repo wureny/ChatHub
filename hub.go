@@ -24,8 +24,9 @@ type Hub struct {
 	buffer      chan Msg
 	register    chan *Client
 	unregister  chan *Client
-
-	allclients   []clientinfo
+	//TODO: 该数据结构并不高效
+	//TODO: 使用sync.map改造
+	allclients   map[string]time.Time
 	clientsMutex sync.Mutex
 }
 
@@ -36,14 +37,14 @@ func newHub(bufferofbroadcast int64, maxconnections int64) *Hub {
 		buffer:     make(chan Msg, bufferofbroadcast),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
-		allclients: make([]clientinfo, 0, maxconnections),
+		allclients: make(map[string]time.Time, maxconnections),
 	}
 }
 
 func (h *Hub) run() {
 	limiter := rate.NewLimiter(350, 350*3)
 	ctx := context.Background()
-	h.clientsMutex.Lock()
+	//h.clientsMutex.Lock()
 	//TODO:锁的增加有问题
 	/*
 		defer h.clientsMutex.Unlock()
@@ -63,15 +64,15 @@ func (h *Hub) run() {
 	go func() {
 		for {
 			for i, v := range h.allclients {
-				if time.Now().Sub(v.lastmesgsent) > 15*time.Minute {
+				if time.Now().Sub(v) > 15*time.Minute {
 					for client := range h.clients {
-						if client.conn.RemoteAddr().String() == v.addr {
+						if client.conn.RemoteAddr().String() == i {
 							close(client.send)
 							delete(h.clients, client)
 							break
 						}
 					}
-					h.allclients = append(h.allclients[:i], h.allclients[i+1:]...)
+					delete(h.allclients, i)
 				}
 			}
 			time.Sleep(3 * time.Second)
@@ -101,7 +102,7 @@ func (h *Hub) run() {
 		}
 		wg.Wait()
 	}()
-
+	//处理客户端传来的各种请求
 	for {
 		select {
 		case client := <-h.register:
@@ -109,16 +110,11 @@ func (h *Hub) run() {
 				break
 			}
 			h.clients[client] = true
-			h.allclients = append(h.allclients, clientinfo{client.conn.RemoteAddr().String(), time.Now()})
+			h.allclients[client.conn.RemoteAddr().String()] = time.Now()
 		case client := <-h.unregister:
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
-				for i, v := range h.allclients {
-					if v.addr == client.conn.RemoteAddr().String() {
-						h.allclients = append(h.allclients[:i], h.allclients[i+1:]...)
-						break
-					}
-				}
+				delete(h.allclients, client.conn.RemoteAddr().String())
 				close(client.send)
 			}
 		case message := <-h.broadcast:
@@ -127,14 +123,7 @@ func (h *Hub) run() {
 			if err != nil {
 				break
 			}
-			go func() {
-				for i, v := range h.allclients {
-					if v.addr == msg.addr {
-						h.allclients[i].lastmesgsent = time.Now()
-						break
-					}
-				}
-			}()
+			h.allclients[msg.addr] = time.Now()
 			e := limiter.Wait(ctx)
 			if e != nil {
 				time.Sleep(1 * time.Second)
